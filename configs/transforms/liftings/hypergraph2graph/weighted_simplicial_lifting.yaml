@@ -1,0 +1,4 @@
+transform_type: 'lifting'
+transform_name: "WeightedSimplicialLifting"
+k_value: 3
+feature_lifting: ProjectionSum
