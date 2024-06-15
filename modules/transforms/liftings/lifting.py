@@ -1,6 +1,8 @@
 from abc import abstractmethod
 
+import hypernetx as hnx
 import networkx as nx
+import pandas as pd
 import torch_geometric
 from torch_geometric.utils.undirected import is_undirected, to_undirected
 
@@ -200,6 +202,26 @@ class HypergraphLifting(AbstractLifting):
 
     def __init__(self, feature_lifting="ProjectionSum", **kwargs):
         super().__init__(feature_lifting=feature_lifting, **kwargs)
+
+    def _generate_hypergraph_from_data(
+        self, data: torch_geometric.data.Data
+    ) -> hnx.Hypergraph:
+        r"""Generates a HyperNetworkX hypergraph from the input data object.
+
+        Parameters
+        ----------
+        data : torch_geometric.data.Data
+            The input data.
+
+        Returns
+        -------
+        hnx.Graph
+            The generated HyperNetX graph.
+        """
+        hypergraph = hnx.Hypergraph(
+            pd.DataFrame(data.incidence_hyperedges.coalesce().indices().T)
+        )
+        return hypergraph
 
 
 class CombinatorialLifting(AbstractLifting):
