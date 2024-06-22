@@ -1,18 +1,38 @@
 from itertools import combinations
 from math import comb, factorial
+from typing import Callable, Optional
 
 import hypernetx as hnx
+import torch
 import torch_geometric
 from hypernetx.reports import edge_size_dist
 from toponetx.classes import SimplicialComplex
 
+from modules.data.utils.utils import get_complex_connectivity
 from modules.transforms.liftings.hypergraph2simplicial.base import (
     Hypergraph2SimplicialLifting,
 )
 
 
 class WeightedSimplicialLifting(Hypergraph2SimplicialLifting):
-    def __init__(self, complex_dim=2, **kwargs):
+    def __init__(
+        self,
+        bare_weight_generator: Optional[
+            Callable[[SimplicialComplex, hnx.Hypergraph], str]
+        ] = None,
+        complex_dim=-1,
+        **kwargs,
+    ):
+        """Initialize a WeightedSimplicialLifting
+
+        Args:
+            bare_weight_generator (Optional[ Callable[[SimplicialComplex, hnx.Hypergraph], str] ], optional): A function which takes the hypergraph and associated simplicial complex and attaches 'bare affinity weights' to a subset of the simplices. It should return the name of the attribute which contains the bare affinity weights. If None, defaults to the collaboration_network_affinity_weights function.
+            complex_dim (int, optional): Dimension of the simplicial complex. Defaults to -1.
+        """
+        if bare_weight_generator:
+            self.bare_weight_generator = bare_weight_generator
+        else:
+            self.bare_weight_generator = collaboration_network_affinity_weights
         super().__init__(complex_dim, **kwargs)
 
     def lift_topology(self, data: torch_geometric.data.Data) -> dict:
@@ -43,15 +63,24 @@ class WeightedSimplicialLifting(Hypergraph2SimplicialLifting):
             )
 
         # Generate the weights
-        _generate_bare_affinity_weights(simplicial_closure, H)
-        _bare_affinity_weights_to_topological_weights(simplicial_closure)
+        bare_weight_key = self.bare_weight_generator(simplicial_closure, H)
+        _bare_affinity_weights_to_topological_weights(
+            simplicial_closure, bare_weight_key=bare_weight_key
+        )
+
+        lifted_topology = get_complex_connectivity(
+            simplicial_closure, self.complex_dim, signed=self.signed
+        )
+        lifted_topology["x_0"] = torch.stack(
+            list(simplicial_closure.get_simplex_attributes("features", 0).values())
+        )
 
         return simplicial_closure
 
 
 def _bare_affinity_weights_to_topological_weights(
-    sc: SimplicialComplex, bare_weight_key="bare_weight"
-):
+    sc: SimplicialComplex, bare_weight_key: str = "bare_weight"
+) -> None:
     """Take 'bare affinity weights' (>=0) associated with each simplex and transform to 'topological weights' (> 0)."""
     bare_weights = sc.get_simplex_attributes(bare_weight_key)
     if not bare_weights:
@@ -67,18 +96,26 @@ def _bare_affinity_weights_to_topological_weights(
     return
 
 
-def _generate_bare_affinity_weights(
+def collaboration_network_affinity_weights(
     sc: SimplicialComplex,
     H: hnx.Hypergraph,
-    bare_weight_key: str = "bare_weight",
-):
+) -> str:
+    """Generate bare affinity weights for a simplicial complex based on a collaboration hypergraph H. These weights are designed to have the following property: if the edges in the hypergraph correspond to author groups of papers, the topological weight of a node will be the number of papers that author has written.
+
+    Args:
+        sc (SimplicialComplex): The simplicial complex lifting of H.
+        H (hnx.Hypergraph): Hypergraph from which sc is generated.
+    """
+    # Edge attribute to which bare affinity weights are assigned
+    bare_weight_key: str = "bare_weight"
+
     d = sc.dim
     if d == max(edge_size_dist(H)):
         for edge in H.edges:
             sc[edge][bare_weight_key] = H[edge].get("edge_attr", 1) / factorial(
                 len(H[edge]) - 1
             )
-        return
+        return bare_weight_key
 
     for edge in H.edges:
         if len(edge) <= d:
@@ -94,3 +131,5 @@ def _generate_bare_affinity_weights(
                 sc[simplex][bare_weight_key] = (
                     sc[simplex].get(bare_weight_key, 0) + edge_factor
                 )
+
+    return bare_weight_key
