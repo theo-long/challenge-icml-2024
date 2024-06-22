@@ -14,7 +14,8 @@ class Hypergraph2SimplicialLifting(HypergraphLifting):
 
     def __init__(self, complex_dim=-1, **kwargs):
         super().__init__(**kwargs)
-        if self.complex_dim < -1:
+        if complex_dim < -1:
             raise ValueError("complex_dim must be >= -1.")
         self.complex_dim = complex_dim
         self.type = "hypergraph2simplicial"
+        self.signed = kwargs.get("signed", False)

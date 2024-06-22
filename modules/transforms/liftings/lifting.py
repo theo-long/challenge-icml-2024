@@ -205,7 +205,7 @@ class HypergraphLifting(AbstractLifting):
 
     def _generate_hypergraph_from_data(
         self, data: torch_geometric.data.Data
-    ) -> hnx.Hypergraph:
+    ) -> tuple[hnx.Hypergraph, dict]:
         r"""Generates a HyperNetworkX hypergraph from the input data object.
 
         Parameters
@@ -221,7 +221,11 @@ class HypergraphLifting(AbstractLifting):
         hypergraph = hnx.Hypergraph(
             pd.DataFrame(data.incidence_hyperedges.coalesce().indices().T)
         )
-        return hypergraph
+        if hasattr(data, "x_hyperedges"):
+            edge_attrs = dict(enumerate(data["x_hyperedges"]))
+        else:
+            edge_attrs = {}
+        return hypergraph, edge_attrs
 
 
 class CombinatorialLifting(AbstractLifting):
